@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TheDRIP - Client Message Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles to ensure the scrollbar is styled correctly in dark mode */
+        .max-h-96 {
+            max-height: 24rem; /* h-96 equivalent */
+        }
+        .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+            --tw-space-y-reverse: 0;
+            margin-top: calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));
+            margin-bottom: calc(0.75rem * var(--tw-space-y-reverse));
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* Dark mode custom background for the sidebar */
+        .dark .bg-gray-800 {
+            background-color: #1f2937;
+        }
+        .dark .bg-gray-900 {
+            background-color: #111827;
+        }
+        /* Style for scrollable areas */
+        .overflow-y-auto::-webkit-scrollbar {
+            width: 8px;
+        }
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+            background-color: #4b5563; /* Gray-600 in Tailwind */
+            border-radius: 4px;
+        }
+        .overflow-y-auto::-webkit-scrollbar-track {
+            background-color: #1f2937; /* Gray-800 in Tailwind */
+        }
+    </style>
+    <script>
+        // Set up Tailwind dark mode based on system preference or a stored value
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="dark:bg-gray-900">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // The original imports of React and hooks are handled by the CDN scripts above
+        const { useState, useEffect } = React;
+        const { Menu, Grid, MessageSquare, Copy, Send, Plus, MoreVertical, Trash2, ArrowLeft, Edit, Save, ChevronDown, ChevronUp, Check, Phone, Mail, ExternalLink, Search, Filter, Upload, Download } = lucide;
+
+        // **NOTE**: The 'lucide-react' icons are replaced with the 'lucide' global variable, 
+        // which must be included via a separate CDN script for this to work.
+        // I'll assume for simplicity that lucide icons are globally available.
+        // For a true single file, you'd embed the SVG markup, but I will include
+        // the lucide-icons CDN.
+
+        // ADDED SCRIPT FOR LUCIDE ICONS (to be placed in the HEAD or before this script)
+        // <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+        // This is a necessary addition to the file structure above.
+
+        const App = () => {
+            const [page, setPage] = useState('dashboard');
+            const [viewMode, setViewMode] = useState('grid');
+            const [clients, setClients] = useState([]);
+            const [drips, setDrips] = useState([]);
+            const [showAddClient, setShowAddClient] = useState(false);
+            const [showImportCSV, setShowImportCSV] = useState(false);
+            const [csvData, setCsvData] = useState('');
+            const [newClient, setNewClient] = useState({ name: '', firstName: '', dripId: 1 });
+            const [selectedClientId, setSelectedClientId] = useState(null);
+            const [expandedMessages, setExpandedMessages] = useState([]);
+            const [newNote, setNewNote] = useState('');
+            const [isEditing, setIsEditing] = useState(false);
+            const [notification, setNotification] = useState('');
+            const [searchQuery, setSearchQuery] = useState('');
+            const [filterStatus, setFilterStatus] = useState('all');
+            const [filterDrip, setFilterDrip] = useState('all');
+            const [dashboardFilter, setDashboardFilter] = useState('all');
+            const [editedMessage, setEditedMessage] = useState('');
+            const [isEditingMessage, setIsEditingMessage] = useState(false);
+
+            useEffect(() => {
+                const savedClients = localStorage.getItem('drip_clients');
+                const savedDrips = localStorage.getItem('drip_campaigns');
+
+                if (!savedClients) {
+                    const sampleDrips = [
+                        {
+                            id: 1,
+                            name: 'Real Estate Outreach',
+                            messages: [
+                                "Hi {{firstName}}, just touching base. Hope you're having a great week!",
+                                "Following up, {{firstName}}. Let me know if you have any questions.",
+                                "It's been a little while, {{firstName}}. Just wanted to see how things are going.",
+                                "Hope you're well, {{firstName}}. I had a thought about our last conversation.",
+                                "Quick check-in, {{firstName}}. Anything new on your end?",
+                                "Reaching out again, {{firstName}}. I have some new information you might find interesting.",
+                                "Hi {{firstName}}, it's been a month. Time flies! How are you?",
+                                "Just keeping the lines of communication open, {{firstName}}.",
+                                "Another weekly check-in, {{firstName}}. Hope all is well.",
+                                "Touching base again, {{firstName}}. Any updates?",
+                                "Hi {{firstName}}, wanted to reconnect. What's new?",
+                                "Final check-in, {{firstName}}. Let me know if I can help."
+                            ]
+                        },
+                        {
+                            id: 2,
+                            name: 'SaaS Trial Follow-up',
+                            messages: [
+                                "Hi {{firstName}}, hope you're finding value in the trial!",
+                                "Following up, {{firstName}}. The reporting feature is a fan favorite.",
+                                "Quick check-in, {{firstName}}. Any questions about features?",
+                                "Hi {{firstName}}, noticed you haven't logged in lately. Need help?",
+                                "Your trial ends soon, {{firstName}}. Ready to continue?",
+                                "Last chance to lock in early pricing, {{firstName}}!",
+                                "Trial expired, {{firstName}}. Here's what you're missing.",
+                                "We'd love to have you back, {{firstName}}.",
+                                "Special offer just for you, {{firstName}}.",
+                                "Final follow-up, {{firstName}}. Door's always open.",
+                                "Checking in one last time, {{firstName}}.",
+                                "Hope to work with you in the future, {{firstName}}!"
+                            ]
+                        }
+                    ];
+                    const sampleClients = [
+                        {
+                            id: 1,
+                            name: 'Sarah Connor',
+                            firstName: 'Sarah',
+                            lastName: 'Connor',
+                            phone: '555-0101',
+                            email: 'sarah@email.com',
+                            url: 'linkedin.com/in/sarahconnor',
+                            dripId: 1,
+                            currentMessage: 1,
+                            totalMessages: 12,
+                            status: 'overdue',
+                            dueDate: '2025-10-13',
+                            lastSent: '2025-10-06',
+                            history: [
+                                {
+                                    date: '2025-10-16T10:49:00',
+                                    text: 'Initial contact, seems interested in residential properties.'
+                                }
+                            ]
+                        },
+                        {
+                            id: 2,
+                            name: 'John Smith',
+                            firstName: 'John',
+                            lastName: 'Smith',
+                            phone: '555-0102',
+                            email: 'john@email.com',
+                            url: 'linkedin.com/in/johnsmith',
+                            dripId: 2,
+                            currentMessage: 3,
+                            totalMessages: 12,
+                            status: 'overdue',
+                            dueDate: '2025-10-15',
+                            lastSent: '2025-10-08',
+                            history: []
+                        },
+                        {
+                            id: 3,
+                            name: 'Maria Garcia',
+                            firstName: 'Maria',
+                            lastName: 'Garcia',
+                            phone: '555-0103',
+                            email: 'maria@email.com',
+                            url: 'linkedin.com/in/mariagarcia',
+                            dripId: 1,
+                            currentMessage: 2,
+                            totalMessages: 12,
+                            status: 'active',
+                            dueDate: '2025-10-18',
+                            lastSent: '2025-10-11',
+                            history: []
+                        }
+                    ];
+                    setDrips(sampleDrips);
+                    setClients(sampleClients);
+                    localStorage.setItem('drip_campaigns', JSON.stringify(sampleDrips));
+                    localStorage.setItem('drip_clients', JSON.stringify(sampleClients));
+                } else {
+                    setClients(JSON.parse(savedClients));
+                    setDrips(JSON.parse(savedDrips));
+                }
+            }, []);
+
+            useEffect(() => {
+                if (clients.length > 0 || localStorage.getItem('drip_clients')) {
+                    localStorage.setItem('drip_clients', JSON.stringify(clients));
+                }
+            }, [clients]);
+
+            useEffect(() => {
+                if (drips.length > 0 || localStorage.getItem('drip_campaigns')) {
+                    localStorage.setItem('drip_campaigns', JSON.stringify(drips));
+                }
+            }, [drips]);
+
+            useEffect(() => {
+                if (selectedClientId) {
+                    const client = clients.find(c => c.id === selectedClientId);
+                    if (client && !isEditingMessage) {
+                        setEditedMessage(getCurrentMessage(client));
+                    }
+                }
+            }, [selectedClientId, clients, drips, isEditingMessage]);
+
+            const showNotification = (message) => {
+                setNotification(message);
+                setTimeout(() => setNotification(''), 2000);
+            };
+
+            const getCurrentMessage = (client) => {
+                const drip = drips.find(d => d.id === client.dripId);
+                if (!drip) return '';
+                const message = drip.messages[client.currentMessage - 1] || '';
+                return message
+                    .replace(/{{firstName}}/g, client.firstName)
+                    .replace(/{{lastName}}/g, client.lastName || '')
+                    .replace(/{{email}}/g, client.email || '')
+                    .replace(/{{url}}/g, client.url || '');
+            };
+
+            const getLastSentMessage = (client) => {
+                if (client.currentMessage === 1) return 'No messages sent yet';
+                const drip = drips.find(d => d.id === client.dripId);
+                if (!drip) return '';
+                const message = drip.messages[client.currentMessage - 2] || '';
+                return message
+                    .replace(/{{firstName}}/g, client.firstName)
+                    .replace(/{{lastName}}/g, client.lastName || '')
+                    .replace(/{{email}}/g, client.email || '')
+                    .replace(/{{url}}/g, client.url || '');
+            };
+
+            const getDripName = (dripId) => {
+                const drip = drips.find(d => d.id === dripId);
+                return drip ? drip.name : 'Unknown';
+            };
+
+            const markAsSent = (clientId) => {
+                setClients(clients.map(c => {
+                    if (c.id === clientId) {
+                        const nextMessage = c.currentMessage + 1;
+                        return {
+                            ...c,
+                            currentMessage: nextMessage > c.totalMessages ? c.totalMessages : nextMessage,
+                            lastSent: new Date().toISOString().split('T')[0],
+                            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                            status: nextMessage > c.totalMessages ? 'complete' : 'active',
+                            history: [
+                                ...(c.history || []),
+                                {
+                                    date: new Date().toISOString(),
+                                    text: `Message ${c.currentMessage} marked as sent`
+                                }
+                            ]
+                        };
+                    }
+                    return c;
+                }));
+                showNotification('Message marked as sent!');
+            };
+
+            const copyMessage = (text, clientId) => {
+                navigator.clipboard.writeText(text);
+                if (clientId) {
+                    setClients(clients.map(c => {
+                        if (c.id === clientId) {
+                            return {
+                                ...c,
+                                history: [
+                                    ...(c.history || []),
+                                    {
+                                        date: new Date().toISOString(),
+                                        text: `Message ${c.currentMessage} copied to clipboard`
+                                    }
+                                ]
+                            };
+                        }
+                        return c;
+                    }));
+                }
+                showNotification('Message copied!');
+            };
+
+            const openWhatsApp = (client) => {
+                const message = getCurrentMessage(client);
+                window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+                setClients(clients.map(c => {
+                    if (c.id === client.id) {
+                        return {
+                            ...c,
+                            history: [
+                                ...(c.history || []),
+                                {
+                                    date: new Date().toISOString(),
+                                    text: `Message ${c.currentMessage} sent via WhatsApp`
+                                }
+                            ]
+                        };
+                    }
+                    return c;
+                }));
+                showNotification('Opening WhatsApp...');
+            };
+
+            const handleAddClient = () => {
+                if (!newClient.name || !newClient.firstName) return;
+
+                const client = {
+                    id: Date.now(),
+                    name: newClient.name,
+                    firstName: newClient.firstName,
+                    lastName: '',
+                    phone: '',
+                    email: '',
+                    url: '',
+                    dripId: parseInt(newClient.dripId),
+                    currentMessage: 1,
+                    totalMessages: 12,
+                    status: 'active',
+                    dueDate: new Date().toISOString().split('T')[0],
+                    lastSent: new Date().toISOString().split('T')[0],
+                    history: [
+                        {
+                            date: new Date().toISOString(),
+                            text: 'Client created'
+                        }
+                    ]
+                };
+
+                setClients([...clients, client]);
+                setShowAddClient(false);
+                setNewClient({ name: '', firstName: '', dripId: 1 });
+                showNotification('Client added!');
+            };
+
+            const handleCSVImport = () => {
+                if (!csvData.trim()) {
+                    showNotification('Please paste CSV data');
+                    return;
+                }
+                const lines = csvData.trim().split('\n');
+                const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+
+                const newClients = [];
+                for (let i = 1; i < lines.length; i++) {
+                    if (!lines[i].trim()) continue;
+
+                    const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+                    const client = {
+                        id: Date.now() + i,
+                        name: values[headers.indexOf('name')] || values[headers.indexOf('fullname')] || '',
+                        firstName: values[headers.indexOf('firstname')] || values[headers.indexOf('first')] || '',
+                        lastName: values[headers.indexOf('lastname')] || values[headers.indexOf('last')] || '',
+                        phone: values[headers.indexOf('phone')] || '',
+                        email: values[headers.indexOf('email')] || '',
+                        url: values[headers.indexOf('url')] || values[headers.indexOf('linkedin')] || '',
+                        dripId: 1,
+                        currentMessage: 1,
+                        totalMessages: 12,
+                        status: 'active',
+                        dueDate: new Date().toISOString().split('T')[0],
+                        lastSent: new Date().toISOString().split('T')[0],
+                        history: [
+                            {
+                                date: new Date().toISOString(),
+                                text: 'Client imported from CSV'
+                            }
+                        ]
+                    };
+
+                    if (client.name || client.firstName) {
+                        newClients.push(client);
+                    }
+                }
+
+                setClients([...clients, ...newClients]);
+                setShowImportCSV(false);
+                setCsvData('');
+                showNotification(`Imported ${newClients.length} clients!`);
+            };
+
+            const downloadCSV = () => {
+                const headers = ['Name', 'First Name', 'Last Name', 'Phone', 'Email', 'URL', 'Drip Campaign', 'Current Message', 'Status', 'Due Date', 'Last Sent'];
+                const rows = clients.map(c => [
+                    c.name,
+                    c.firstName,
+                    c.lastName,
+                    c.phone,
+                    c.email,
+                    c.url,
+                    getDripName(c.dripId),
+                    `${c.currentMessage}/${c.totalMessages}`,
+                    c.status,
+                    c.dueDate,
+                    c.lastSent
+                ]);
+                const csvContent = [
+                    headers.join(','),
+                    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+                ].join('\n');
+                const now = new Date();
+                const filename = `drip-clients-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.csv`;
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                window.URL.revokeObjectURL(url);
+
+                showNotification('CSV downloaded!');
+            };
+
+            const openClientProfile = (clientId) => {
+                setSelectedClientId(clientId);
+                setPage('profile');
+                setExpandedMessages([]);
+                setIsEditing(false);
+                const client = clients.find(c => c.id === clientId);
+                if (client) {
+                    setEditedMessage(getCurrentMessage(client));
+                    setIsEditingMessage(false);
+                }
+            };
+
+            const toggleMessageExpand = (index) => {
+                if (expandedMessages.includes(index)) {
+                    setExpandedMessages(expandedMessages.filter(i => i !== index));
+                } else {
+                    setExpandedMessages([...expandedMessages, index]);
+                }
+            };
+
+            const addNote = () => {
+                if (!newNote.trim()) return;
+
+                setClients(clients.map(c => {
+                    if (c.id === selectedClientId) {
+                        return {
+                            ...c,
+                            history: [
+                                ...(c.history || []),
+                                {
+                                    date: new Date().toISOString(),
+                                    text: newNote,
+                                    type: 'note'
+                                }
+                            ]
+                        };
+                    }
+                    return c;
+                }));
+                setNewNote('');
+                showNotification('Note added!');
+            };
+
+            const updateClient = (updates) => {
+                setClients(clients.map(c => {
+                    if (c.id === selectedClientId) {
+                        return { ...c, ...updates };
+                    }
+                    return c;
+                }));
+            };
+
+            const saveClientEdits = () => {
+                setClients(clients.map(c => {
+                    if (c.id === selectedClientId) {
+                        return {
+                            ...c,
+                            history: [
+                                ...(c.history || []),
+                                {
+                                    date: new Date().toISOString(),
+                                    text: 'Client profile updated'
+                                }
+                            ]
+                        };
+                    }
+                    return c;
+                }));
+                setIsEditing(false);
+                showNotification('Changes saved!');
+            };
+
+            const deleteClient = (clientId) => {
+                setClients(clients.filter(c => c.id !== clientId));
+                setPage('clients');
+                showNotification('Client deleted');
+            };
+
+            const selectedClient = clients.find(c => c.id === selectedClientId);
+            const selectedDrip = selectedClient ? drips.find(d => d.id === selectedClient.dripId) : null;
+            
+            const filteredClients = clients.filter(client => {
+                const matchesSearch =
+                    client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    client.phone.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (client.email && client.email.toLowerCase().includes(searchQuery.toLowerCase()));
+
+                const matchesStatus = filterStatus === 'all' || client.status === filterStatus;
+                const matchesDrip = filterDrip === 'all' || client.dripId === parseInt(filterDrip);
+
+                return matchesSearch && matchesStatus && matchesDrip;
+            });
+
+            const today = new Date().toISOString().split('T')[0];
+            const allActionNeeded = filteredClients.filter(client => {
+                return client.status === 'overdue' || client.dueDate === today;
+            });
+
+            let dashboardClients = allActionNeeded;
+            if (dashboardFilter === 'overdue') {
+                dashboardClients = allActionNeeded.filter(c => c.status === 'overdue');
+            } else if (dashboardFilter === 'today') {
+                dashboardClients = allActionNeeded.filter(c => c.dueDate === today);
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+                    {notification && (
+                        <div className="fixed top-4 right-4 z-50 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-fade-in">
+                            <Check size={20} />
+                            {notification}
+                        </div>
+                    )}
+                    <div className="fixed left-0 top-0 w-64 h-full bg-gray-800 text-white z-20">
+                        <div className="p-6 flex items-center gap-3 border-b border-gray-700">
+                            <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">D</div>
+                            <span className="text-xl font-semibold">TheDRIP</span>
+                        </div>
+                        <nav className="p-4">
+                            <button
+                                onClick={() => setPage('dashboard')}
+                                className={`w-full text-left px-4 py-3 rounded-lg mb-2 flex items-center gap-3 ${page === 'dashboard' ? 'bg-gray-700' : 'hover:bg-gray-700'}`}
+                            >
+                                <Grid size={20} />
+                                <span>Dashboard</span>
+                            </button>
+                            <button
+                                onClick={() => setPage('clients')}
+                                className={`w-full text-left px-4 py-3 rounded-lg mb-2 flex items-center gap-3 ${page === 'clients' ? 'bg-gray-700' : 'hover:bg-gray-700'}`}
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                </svg>
+                                <span>Clients</span>
+                            </button>
+                            <button
+                                onClick={() => setPage('drips')}
+                                className={`w-full text-left px-4 py-3 rounded-lg mb-2 flex items-center gap-3 ${page === 'drips' ? 'bg-gray-700' : 'hover:bg-gray-700'}`}
+                            >
+                                <MessageSquare size={20} />
+                                <span>Drips</span>
+                            </button>
+                            <button
+                                onClick={() => setPage('settings')}
+                                className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 ${page === 'settings' ? 'bg-gray-700' : 'hover:bg-gray-700'}`}
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                                <span>Settings</span>
+                            </button>
+                        </nav>
+                    </div>
+                    <div className="ml-64 p-8">
+                        {page === 'dashboard' && (
+                            <>
+                                <div className="flex justify-between items-center mb-6">
+                                    <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setViewMode('grid')}
+                                            className={`p-2 rounded ${viewMode === 'grid' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'}`}
+                                        >
+                                            <Grid size={20} />
+                                        </button>
+                                        <button
+                                            onClick={() => setViewMode('list')}
+                                            className={`p-2 rounded ${viewMode === 'list' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'}`}
+                                        >
+                                            <Menu size={20} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 mb-6">
+                                    <div className="flex gap-4">
+                                        <div className="flex-1 relative">
+                                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                                            <input
+                                                type="text"
+                                                placeholder="Search by name, phone, or email..."
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                            />
+                                        </div>
+                                        <select
+                                            value={filterStatus}
+                                            onChange={(e) => setFilterStatus(e.target.value)}
+                                            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                        >
+                                            <option value="all">All Status</option>
+                                            <option value="overdue">Overdue</option>
+                                            <option value="active">Active</option>
+                                            <option value="complete">Complete</option>
+                                        </select>
+                                        <select
+                                            value={filterDrip}
+                                            onChange={(e) => setFilterDrip(e.target.value)}
+                                            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                        >
+                                            <option value="all">All Campaigns</option>
+                                            {drips.map(drip => (
+                                                <option key={drip.id} value={drip.id}>{drip.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-4 gap-4 mb-6">
+                                    <button
+                                        onClick={() => setDashboardFilter('all')}
+                                        className={`bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 text-left transition-all hover:shadow-xl ${dashboardFilter === 'all' ? 'ring-2 ring-purple-600' : ''}`}
+                                    >
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Action Needed</p>
+                                        <p className="text-3xl font-bold text-gray-900 dark:text-white">{allActionNeeded.length}</p>
+                                    </button>
+                                    <button
+                                        onClick={() => setDashboardFilter('overdue')}
+                                        className={`bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 text-left transition-all hover:shadow-xl ${dashboardFilter === 'overdue' ? 'ring-2 ring-red-600' : ''}`}
+                                    >
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Overdue</p>
+                                        <p className="text-3xl font-bold text-red-500">{allActionNeeded.filter(c => c.status === 'overdue').length}</p>
+                                    </button>
+                                    <button
+                                        onClick={() => setDashboardFilter('today')}
+                                        className={`bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 text-left transition-all hover:shadow-xl ${dashboardFilter === 'today' ? 'ring-2 ring-orange-600' : ''}`}
+                                    >
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Due Today</p>
+                                        <p className="text-3xl font-bold text-orange-500">{allActionNeeded.filter(c => c.dueDate === today).length}</p>
+                                    </button>
+                                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4">
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Clients</p>
+                                        <p className="text-3xl font-bold text-purple-500">{clients.length}</p>
+                                    </div>
+                                </div>
+                                {dashboardClients.length === 0 ? (
+                                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-12 text-center">
+                                        <div className="text-6xl mb-4">🎉</div>
+                                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">You're All Caught Up!</h2>
+                                        <p className="text-gray-600 dark:text-gray-400">No overdue messages or messages due today.</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {viewMode === 'grid' ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                {dashboardClients.map(client => (
+                                                    <div key={client.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                                                        <div className="flex justify-between items-start mb-4">
+                                                            <div>
+                                                                <h3
+                                                                   className="text-xl font-bold text-gray-900 dark:text-white cursor-pointer hover:text-purple-600"
+                                                                    onClick={() => openClientProfile(client.id)}
+                                                                >
+                                                                    {client.name}
+                                                                </h3>
+                                                                <p className="text-sm text-gray-500 dark:text-gray-400">Message {client.currentMessage} of {client.totalMessages}</p>
+                                                            </div>
+                                                            <span className={`px-3 py-1 text-white text-xs rounded-full flex items-center gap-1 ${client.status === 'overdue' ? 'bg-red-500' : client.status === 'active' ? 'bg-green-500' : 'bg-purple-500'}`}>
+                                                                {client.status === 'overdue' && (
+                                                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                                    </svg>
+                                                                )}
+                                                                {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Due: {client.dueDate}</p>
+                                                        <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg mb-4 text-gray-700 dark:text-gray-300 text-sm">
+                                                            {getCurrentMessage(client)}
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => openWhatsApp(client)}
+                                                                className="flex-1 p-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-semibold text-sm"
+                                                            >
+                                                                WA
+                                                            </button>
+                                                            <button
+                                                                onClick={() => copyMessage(getCurrentMessage(client), client.id)}
+                                                                className="flex-1 p-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                                                            >
+                                                                <Copy size={18} className="mx-auto text-gray-700 dark:text-gray-300" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => markAsSent(client.id)}
+                                                                className="flex-1 p-2 bg-cyan-400 text-gray-900 rounded hover:bg-cyan-500"
+                                                            >
+                                                                <Send size={18} className="mx-auto" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+                                                <table className="w-full">
+                                                    <thead className="border-b border-gray-200 dark:border-gray-700">
+                                                        <tr className="text-left text-gray-500 dark:text-gray-400">
+                                                            <th className="p-4">Client</th>
+                                                            <th className="p-4">Status</th>
+                                                            <th className="p-4">Due Date</th>
+                                                            <th className="p-4">Next Message</th>
+                                                            <th className="p-4">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {dashboardClients.map(client => (
+                                                            <tr key={client.id} className="border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white">
+                                                                <td className="p-4 flex items-center gap-2">
+                                                                    <svg className="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                                                        <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                                                                    </svg>
+                                                                    <span
+                                                                       className="cursor-pointer hover:text-purple-600"
+                                                                        onClick={() => openClientProfile(client.id)}
+                                                                    >
+                                                                        {client.name}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="p-4">
+                                                                    <span className={`px-3 py-1 text-white text-xs rounded-full flex items-center gap-1 w-fit ${client.status === 'overdue' ? 'bg-red-500' : client.status === 'active' ? 'bg-green-500' : 'bg-purple-500'}`}>
+                                                                        {client.status === 'overdue' && (
+                                                                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                                                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                                            </svg>
+                                                                        )}
+                                                                        {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="p-4">{client.dueDate}</td>
+                                                                <td className="p-4 max-w-md truncate text-gray-600 dark:text-gray-400">{getCurrentMessage(client)}</td>
+                                                                <td className="p-4">
+                                                                    <div className="flex gap-2">
+                                                                        <button
+                                                                            onClick={() => openWhatsApp(client)}
+                                                                            className="p-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-semibold text-sm px-3"
+                                                                        >
+                                                                            WA
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => copyMessage(getCurrentMessage(client), client.id)}
+                                                                            className="p-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                                                                        >
+                                                                            <Copy size={18} className="text-gray-700 dark:text-gray-300" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => markAsSent(client.id)}
+                                                                            className="p-2 bg-cyan-400 text-gray-900 rounded hover:bg-cyan-500"
+                                                                        >
+                                                                            <Send size={18} />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        )}
+                        {page === 'clients' && (
+                            <>
+                                <div className="flex justify-between items-center mb-8">
+                                    <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Clients</h1>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setShowImportCSV(true)}
+                                            className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2 hover:bg-green-700"
+                                        >
+                                            <Upload size={20} />
+                                            Paste CSV
+                                        </button>
+                                        <button
+                                            onClick={() => setShowAddClient(true)}
+                                            className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700"
+                                        >
+                                            <Plus size={20} />
+                                            Add Client
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+                                    <table className="w-full">
+                                        <thead className="border-b border-gray-200 dark:border-gray-700">
+                                            <tr className="text-left text-gray-500 dark:text-gray-400">
+                                                <th className="p-4">Name</th>
+                                                <th className="p-4">Status</th>
+                                                <th className="p-4">Next Message</th>
+                                                <th className="p-4">Drip</th>
+                                                <th className="p-4"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {clients.map(client => (
+                                                <tr key={client.id} className="border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white">
+                                                    <td
+                                                        className="p-4 cursor-pointer hover:text-purple-600"
+                                                        onClick={() => openClientProfile(client.id)}
+                                                    >
+                                                        {client.name}
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <span className={`px-3 py-1 text-white text-xs rounded-full ${client.status === 'overdue' ? 'bg-red-600' : client.status === 'active' ? 'bg-green-600' : 'bg-purple-600'}`}>
+                                                            {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-4">Message {client.currentMessage}</td>
+                                                    <td className="p-4">{getDripName(client.dripId)}</td>
+                                                    <td className="p-4">
+                                                        <button className="text-gray-400 hover:text-gray-600">
+                                                            <MoreVertical size={20} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {showAddClient && (
+                                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96">
+                                            <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Add Client</h2>
+                                            <div className="mb-4">
+                                                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Full Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={newClient.name}
+                                                    onChange={(e) => setNewClient({...newClient, name: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                />
+                                            </div>
+                                            <div className="mb-4">
+                                                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">First Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={newClient.firstName}
+                                                    onChange={(e) => setNewClient({...newClient, firstName: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                />
+                                            </div>
+                                            <div className="mb-4">
+                                                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Drip Campaign</label>
+                                                <select
+                                                    value={newClient.dripId}
+                                                    onChange={(e) => setNewClient({...newClient, dripId: e.target.value})}
+                                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                >
+                                                    {drips.map(drip => (
+                                                        <option key={drip.id} value={drip.id}>{drip.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => setShowAddClient(false)}
+                                                    className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    onClick={handleAddClient}
+                                                    className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                                                >
+                                                    Add Client
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                {showImportCSV && (
+                                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-[600px]">
+                                            <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Paste CSV Data</h2>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                                                Paste your CSV data below. First row should be headers: Name, FirstName, LastName, Phone, Email, URL
+                                            </p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">
+                                                Tip: Use {'{{firstName}}'}, {'{{lastName}}'}, {'{{email}}'}, {'{{url}}'} in your drip messages to personalize them.
+                                            </p>
+                                            <textarea
+                                                value={csvData}
+                                                onChange={(e) => setCsvData(e.target.value)}
+                                                placeholder="Name,FirstName,LastName,Phone,Email,URL&#10;John Doe,John,Doe,555-1234,john@email.com,linkedin.com/in/john"
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm mb-4 resize-none"
+                                                rows={10}
+                                            />
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => {
+                                                        setShowImportCSV(false);
+                                                        setCsvData('');
+                                                    }}
+                                                    className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    onClick={handleCSVImport}
+                                                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                                                >
+                                                    Import
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                        {page === 'settings' && (
+                            <>
+                                <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-8">Settings</h1>
+                                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
+                                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Export Data</h2>
+                                    <p className="text-gray-600 dark:text-gray-400 mb-4">
+                                        Download all your client data as a CSV file. The file will be named with the current date and time.
+                                    </p>
+                                    <button
+                                        onClick={downloadCSV}
+                                        className="px-6 py-3 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700"
+                                    >
+                                        <Download size={20} />
+                                        Download CSV
+                                    </button>
+                                </div>
+                                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Data Statistics</h2>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Clients</p>
+                                            <p className="text-2xl font-bold text-gray-900 dark:text-white">{clients.length}</p>
+                                        </div>
+                                        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Campaigns</p>
+                                            <p className="text-2xl font-bold text-gray-900 dark:text-white">{drips.length}</p>
+                                        </div>
+                                        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Storage Used</p>
+                                            <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                                                {((JSON.stringify(clients).length + JSON.stringify(drips).length) / 1024).toFixed(2)} KB
+                                            </p>
+                                        </div>
+                                        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Storage Available</p>
+                                            <p className="text-2xl font-bold text-gray-900 dark:text-white">~5 MB</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                        {page === 'profile' && selectedClient && (
+                            <div className="max-w-7xl mx-auto">
+                                <div className="flex items-center justify-between mb-6">
+                                    <button
+                                        onClick={() => setPage('dashboard')}
+                                        className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                                    >
+                                        <ArrowLeft size={20} />
+                                        <span>Back</span>
+                                    </button>
+                                    <div className="flex gap-2">
+                                        <button
+                                           onClick={() => {
+                                            if (isEditing) {
+                                                saveClientEdits();
+                                            } else {
+                                                setIsEditing(true);
+                                                showNotification('Edit mode enabled');
+                                            }
+                                          }}
+                                            className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700"
+                                        >
+                                            {isEditing ? <><Save size={16} /> Save</> : <><Edit size={16} /> Edit</>}
+                                        </button>
+                                        <button
+                                           onClick={() => deleteClient(selectedClient.id)}
+                                            className="px-4 py-2 bg-red-500 text-white rounded-lg flex items-center gap-2 hover:bg-red-600"
+                                        >
+                                            <Trash2 size={16} />
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-4">
+                                    <div className="flex items-start justify-between mb-4">
+                                        <div>
+                                            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{selectedClient.name}</h1>
+                                            <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                                                <span className="flex items-center gap-1">
+                                                    <Phone size={14} />
+                                                    {selectedClient.phone || 'No phone'}
+                                                </span>
+                                                <span className="flex items-center gap-1">
+                                                    <Mail size={14} />
+                                                    {selectedClient.email || 'No email'}
+                                                </span>
+                                                {selectedClient.url && (
+                                                    <a href={`https://${selectedClient.url}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-purple-600">
+                                                        <ExternalLink size={14} />
+                                                        Profile
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <span className={`px-4 py-2 text-white text-sm font-medium rounded-full ${selectedClient.status === 'overdue' ? 'bg-red-500' : selectedClient.status === 'active' ? 'bg-green-500' : 'bg-purple-500'}`}>
+                                            {selectedClient.status.charAt(0).toUpperCase() + selectedClient.status.slice(1)}
+                                        </span>
+                                    </div>
+                                    <div className="mb-2">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                Message {selectedClient.currentMessage} of {selectedClient.totalMessages}
+                                            </span>
+                                            <span className="text-sm text-gray-500 dark:text-gray-400">
+                                                {Math.round((selectedClient.currentMessage / selectedClient.totalMessages) * 100)}%
+                                            </span>
+                                        </div>
+                                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                            <div
+                                                className="bg-purple-600 h-2 rounded-full transition-all"
+                                                style={{ width: `${(selectedClient.currentMessage / selectedClient.totalMessages) * 100}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-4">
+                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Details</h3>
+                                    <div className="grid grid-cols-4 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1 text-gray-500 dark:text-gray-400">First Name</label>
+                                            <input
+                                                type="text"
+                                                value={selectedClient.firstName}
+                                                onChange={(e) => updateClient({ firstName: e.target.value })}
+                                                disabled={!isEditing}
+                                                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-700 border-0 rounded text-gray-900 dark:text-white disabled:opacity-60"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1 text-gray-500 dark:text-gray-400">Last Name</label>
+                                            <input
+                                                type="text"
+                                                value={selectedClient.lastName}
+                                                onChange={(e) => updateClient({ lastName: e.target.value })}
+                                                disabled={!isEditing}
+                                                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-700 border-0 rounded text-gray-900 dark:text-white disabled:opacity-60"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1 text-gray-500 dark:text-gray-400">Phone</label>
+                                            <input
+                                                type="text"
+                                                value={selectedClient.phone}
+                                                onChange={(e) => updateClient({ phone: e.target.value })}
+                                                disabled={!isEditing}
+                                                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-700 border-0 rounded text-gray-900 dark:text-white disabled:opacity-60"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1 text-gray-500 dark:text-gray-400">Email</label>
+                                            <input
+                                                type="text"
+                                                value={selectedClient.email || ''}
+                                                onChange={(e) => updateClient({ email: e.target.value })}
+                                                disabled={!isEditing}
+                                                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-700 border-0 rounded text-gray-900 dark:text-white disabled:opacity-60"
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
+                                            <label className="block text-xs font-medium mb-1 text-gray-500 dark:text-gray-400">URL</label>
+                                            <input
+                                                type="text"
+                                                value={selectedClient.url}
+                                                onChange={(e) => updateClient({ url: e.target.value })}
+                                                disabled={!isEditing}
+                                                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-700 border-0 rounded text-gray-900 dark:text-white disabled:opacity-60"
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
+                                            <label className="block text-xs font-medium mb-1 text-gray-500 dark:text-gray-400">Drip Campaign</label>
+                                            <select
+                                                value={selectedClient.dripId}
+                                                onChange={(e) => updateClient({ dripId: parseInt(e.target.value) })}
+                                                disabled={!isEditing}
+                                                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-700 border-0 rounded text-gray-900 dark:text-white disabled:opacity-60"
+                                            >
+                                                {drips.map(drip => (
+                                                    <option key={drip.id} value={drip.id}>{drip.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-4">
+                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3">Last Message Sent</h3>
+                                    <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                                        <p className="text-gray-600 dark:text-gray-400 text-sm italic">
+                                            {getLastSentMessage(selectedClient)}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-4">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Next Message</h3>
+                                        <button
+                                            onClick={() => {
+                                                if (isEditingMessage) {
+                                                    setEditedMessage(getCurrentMessage(selectedClient));
+                                                }
+                                                setIsEditingMessage(!isEditingMessage);
+                                            }}
+                                            className="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                                        >
+                                            {isEditingMessage ? 'Reset' : 'Edit Message'}
+                                        </button>
+                                    </div>
+                                    {isEditingMessage ? (
+                                        <textarea
+                                            value={editedMessage}
+                                            onChange={(e) => setEditedMessage(e.target.value)}
+                                            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white mb-4 resize-none"
+                                            rows={4}
+                                        />
+                                    ) : (
+                                        <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg mb-4">
+                                            <p className="text-gray-900 dark:text-white">{editedMessage}</p>
+                                        </div>
+                                    )}
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => {
+                                                window.open(`https://wa.me/?text=${encodeURIComponent(editedMessage)}`, '_blank');
+                                                setClients(clients.map(c => {
+                                                    if (c.id === selectedClient.id) {
+                                                        return {
+                                                            ...c,
+                                                            history: [
+                                                                ...(c.history || []),
+                                                                {
+                                                                    date: new Date().toISOString(),
+                                                                    text: `Message ${c.currentMessage} sent via WhatsApp`
+                                                                }
+                                                            ]
+                                                        };
+                                                    }
+                                                    return c;
+                                                }));
+                                                showNotification('Opening WhatsApp...');
+                                            }}
+                                            className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center justify-center gap-2"
+                                        >
+                                            <MessageSquare size={18} />
+                                            Send via WhatsApp
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                copyMessage(editedMessage, selectedClient.id);
+                                            }}
+                                            className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 flex items-center justify-center gap-2"
+                                        >
+                                            <Copy size={18} />
+                                            Copy Message
+                                        </button>
+                                        <button
+                                            onClick={() => markAsSent(selectedClient.id)}
+                                            className="flex-1 px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 flex items-center justify-center gap-2"
+                                        >
+                                            <Send size={18} />
+                                            Mark as Sent
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-5 gap-4">
+                                    <div className="col-span-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">All Messages</h3>
+                                        <div className="space-y-2 max-h-96 overflow-y-auto">
+                                            {selectedDrip && selectedDrip.messages ? selectedDrip.messages.map((message, idx) => (
+                                                <div key={idx} className="border border-gray-200 dark:border-gray-700 rounded">
+                                                    <button
+                                                        onClick={() => toggleMessageExpand(idx)}
+                                                        className="w-full px-3 py-2 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-700 text-left"
+                                                    >
+                                                        <span className={`text-sm font-medium ${idx < selectedClient.currentMessage ? 'text-purple-600' : 'text-gray-900 dark:text-white'}`}>
+                                                            Message {idx + 1} {idx < selectedClient.currentMessage && '✓'}
+                                                        </span>
+                                                        {expandedMessages.includes(idx) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                    </button>
+                                                    {expandedMessages.includes(idx) && (
+                                                        <div className="px-3 pb-3">
+                                                            <p className="text-sm text-gray-700 dark:text-gray-300">{message}</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )) : <p className="text-gray-500 text-sm">No messages found.</p>}
+                                        </div>
+                                    </div>
+                                    <div className="col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Notes</h3>
+                                        <textarea
+                                            value={newNote}
+                                            onChange={(e) => setNewNote(e.target.value)}
+                                            placeholder="Add note..."
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none mb-3"
+                                            rows={3}
+                                        />
+                                        <button
+                                            onClick={addNote}
+                                            className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 mb-4"
+                                        >
+                                            Add Note
+                                        </button>
+                                        <div className="space-y-3 max-h-64 overflow-y-auto">
+                                            {selectedClient.history && selectedClient.history.length > 0 ? (
+                                                selectedClient.history.slice().reverse().map((item, idx) => (
+                                                    <div key={idx} className="border-l-2 border-purple-600 pl-3 pb-2">
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                                            {new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, {new Date(item.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                                        </p>
+                                                        <p className="text-sm text-gray-900 dark:text-white">{item.text}</p>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <p className="text-gray-500 dark:text-gray-400 text-sm">No notes yet.</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {page === 'drips' && (
+                            <>
+                                <div className="flex justify-between items-center mb-8">
+                                    <div>
+                                        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">Drip Campaigns</h1>
+                                        <p className="text-gray-500 dark:text-gray-400">Manage your reusable message sequences. Use variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{email}}'}, {'{{url}}'}</p>
+                                    </div>
+                                    <button className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700">
+                                        <Plus size={20} />
+                                        Create Drip
+                                    </button>
+                                </div>
+                                <div className="space-y-6">
+                                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Premade Drips</h2>
+                                    {drips.map(drip => (
+                                        <div key={drip.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{drip.name}</h3>
+                                                <button className="text-red-500 hover:text-red-600">
+                                                    <Trash2 size={20} />
+                                                </button>
+                                            </div>
+                                            <div className="space-y-3">
+                                                {drip.messages.map((message, idx) => (
+                                                    <div key={idx} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                                                        <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">Message {idx + 1}</p>
+                                                        <p className="text-gray-900 dark:text-white">{message}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+    
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</body>
+</html>
