@@ -49,9 +49,11 @@
             document.documentElement.classList.remove('dark');
         }
     </script>
+    <!-- All CDN scripts moved here -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 </head>
 <body class="dark:bg-gray-900">
 
@@ -132,7 +134,7 @@
                                 "Special offer just for you, {{firstName}}.",
                                 "Final follow-up, {{firstName}}. Door's always open.",
                                 "Checking in one last time, {{firstName}}.",
-                                "Hope to work with you in the future, {{firstName}}!"
+                                    "Hope to work with you in the future, {{firstName}}!"
                             ]
                         }
                     ];
@@ -1305,7 +1307,5 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
-    
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 </body>
 </html>
