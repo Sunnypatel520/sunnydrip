@@ -48,11 +48,17 @@
 
         const placeholderMessages = (dripName) => {
             const isRE = dripName.includes('Real Estate');
+            const isNoDrip = dripName.includes('No Drip');
+            
             const messages = {};
             for (let i = 1; i <= 12; i++) {
-                messages[i] = isRE 
-                    ? `RE Message ${i}: Hi {{firstName}}, just touching base about real estate.`
-                    : `SaaS Message ${i}: Checking in on your trial, {{firstName}}.`;
+                if (isNoDrip) {
+                     messages[i] = `[PLACEHOLDER - NO MESSAGE SET]`;
+                } else {
+                    messages[i] = isRE 
+                        ? `RE Message ${i}: Hi {{firstName}}, just touching base about real estate.`
+                        : `SaaS Message ${i}: Checking in on your trial, {{firstName}}.`;
+                }
             }
             return messages;
         };
@@ -60,6 +66,7 @@
         const initialDripsData = [
             { id: 'real_estate_outreach', name: 'Real Estate Outreach', messages: placeholderMessages('Real Estate Outreach') },
             { id: 'saas_trial_followup', name: 'SaaS Trial Follow-up', messages: placeholderMessages('SaaS Trial Follow-up') },
+            { id: 'no_drip', name: 'No Drip - Parking Lot', messages: placeholderMessages('No Drip') }, // NEW No Drip Option
         ];
 
         const getInitialTestClients = (drips) => {
@@ -93,6 +100,10 @@
 
             // Setup Drips
             let drips = storedDrips || initialDripsData;
+            // Ensure No Drip exists if loading old data without it
+            if (!drips.find(d => d.id === 'no_drip')) {
+                drips.push({ id: 'no_drip', name: 'No Drip - Parking Lot', messages: placeholderMessages('No Drip') });
+            }
             if (!storedDrips) {
                 localStorage.setItem(LOCAL_STORAGE_KEY_DRIPS, JSON.stringify(drips));
             }
@@ -166,7 +177,7 @@
             // Re-load data before navigation to ensure fresh state after local storage operations
             data = loadData(); 
 
-            const views = ['Dashboard', 'Clients', 'Drips', 'Profile', 'AddClient', 'AddDrip'];
+            const views = ['Dashboard', 'Clients', 'Drips', 'Profile', 'AddClient', 'AddDrip', 'BulkAddClient']; // Added BulkAddClient
             views.forEach(v => {
                 const el = document.getElementById(v);
                 if (el) {
@@ -190,13 +201,14 @@
             if (activeView === 'Profile') renderClientProfile(client);
             if (activeView === 'AddClient') renderAddClientForm();
             if (activeView === 'AddDrip') renderAddDripForm();
+            if (activeView === 'BulkAddClient') renderBulkAddClientForm(); // Render new form
             
             // Update sidebar active state
             document.querySelectorAll('.nav-item').forEach(btn => {
                 btn.classList.remove('bg-purple-600', 'text-white', 'font-semibold', 'shadow-lg');
                 const targetView = btn.dataset.view;
                 if (targetView === activeView || 
-                    (targetView === 'Clients' && (activeView === 'Profile' || activeView === 'AddClient')) ||
+                    (targetView === 'Clients' && (activeView === 'Profile' || activeView === 'AddClient' || activeView === 'BulkAddClient')) || // Update Clients nav item to include new views
                     (targetView === 'Drips' && activeView === 'AddDrip')) {
                     btn.classList.add('bg-purple-600', 'text-white', 'font-semibold', 'shadow-lg');
                 }
@@ -230,6 +242,25 @@
 
             saveData(data.clients, data.drips);
             renderDashboard();
+        };
+
+        // --- Client Delete Action (New Feature) ---
+        const handleDeleteClient = (clientId) => {
+            // Using window.confirm for simplicity, since alert/confirm are allowed in this canvas environment
+            const client = data.clients.find(c => c.id === clientId);
+            if (!client) return;
+
+            const confirmation = confirm(`Are you sure you want to permanently delete client: ${client.firstName} ${client.lastName}? This action cannot be undone.`);
+            
+            if (confirmation) {
+                // Filter the clients array to remove the client by ID
+                data.clients = data.clients.filter(c => c.id !== clientId);
+                saveData(data.clients, data.drips);
+                console.log(`Client ${clientId} deleted.`);
+                
+                // Navigate back to the Clients List after deletion
+                navigateTo('Clients');
+            }
         };
 
 
@@ -452,10 +483,16 @@
                 <div class="p-8">
                     <header class="flex justify-between items-center mb-8">
                         <h1 class="text-3xl font-bold text-white">Clients</h1>
-                        <button id="add-client-btn" class="px-4 py-2 rounded-xl flex items-center gap-2 font-semibold ${baseClasses.accent}">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                            Add Client
-                        </button>
+                        <div class="flex space-x-4">
+                            <button id="add-client-btn" class="px-4 py-2 rounded-xl flex items-center gap-2 font-semibold ${baseClasses.accent}">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                Add Client
+                            </button>
+                            <button id="bulk-add-client-btn" class="px-4 py-2 rounded-xl flex items-center gap-2 font-semibold ${baseClasses.accentOutline}">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                Bulk Import
+                            </button>
+                        </div>
                     </header>
                     
                     <!-- Filters/Sort (Simplified for local version) -->
@@ -491,6 +528,7 @@
             container.innerHTML = html;
             
             document.getElementById('add-client-btn').onclick = () => navigateTo('AddClient');
+            document.getElementById('bulk-add-client-btn').onclick = () => navigateTo('BulkAddClient'); // Navigate to bulk add form
             
             const renderTableRows = (clients) => {
                 const tbody = document.getElementById('clients-table-body');
@@ -603,7 +641,7 @@
              container.innerHTML = `
                  <div class="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
                      <form id="new-client-form" class="bg-gray-900 p-8 rounded-xl w-full max-w-lg border border-purple-600 shadow-3xl">
-                         <h2 class="text-2xl font-bold text-white mb-6">Add New Client</h2>
+                         <h2 class="text-2xl font-bold text-white mb-6">Add New Client (Single)</h2>
                          
                          <div class="grid grid-cols-2 gap-4 mb-4">
                              <input type="text" name="firstName" placeholder="First Name" required class="${baseClasses.input}" />
@@ -667,6 +705,171 @@
              };
         };
 
+        // --- BULK ADD CLIENTS RENDERER (New Implementation) ---
+
+        const parsePastedData = (rawText, dripCampaignId) => {
+            const lines = rawText.trim().split('\n').filter(line => line.trim() !== '');
+            const newClients = [];
+            let importCount = 0;
+            let skippedCount = 0;
+            const now = new Date();
+            
+            // Determine separator: check if tabs or commas are used (default to comma)
+            const separator = rawText.includes('\t') ? '\t' : ',';
+            
+            lines.forEach((line, index) => {
+                // Split the line by the determined separator
+                const parts = line.split(separator).map(p => p.trim());
+                
+                // Assuming Name is column 1, Phone is column 2, URL is column 3
+                // We are flexible on column order since the user might paste anything.
+                
+                let namePart = parts[0] || '';
+                let phonePart = parts[1] || '';
+                let urlPart = parts[2] || '';
+                
+                // Basic cleanup and validation
+                if (!phonePart && parts.length > 1) {
+                    // Try to guess phone if columns were swapped (simple check for starting with + or being mostly digits)
+                    if (parts[1].match(/^\+?\d.*$/)) {
+                        phonePart = parts[1];
+                    }
+                }
+                
+                // FINAL VALIDATION: Phone is mandatory
+                if (!phonePart.match(/^\+?\d{7,}$/)) { 
+                    console.warn(`Skipping row ${index + 1}: Phone number is missing or invalid.`);
+                    skippedCount++;
+                    return; 
+                }
+
+                let firstName = '';
+                let lastName = '';
+                
+                // Parse Name: Split by space. 
+                const nameParts = namePart.split(/\s+/).filter(p => p.length > 0);
+                if (nameParts.length === 1) {
+                    firstName = nameParts[0];
+                } else if (nameParts.length >= 2) {
+                    firstName = nameParts[0];
+                    lastName = nameParts.slice(1).join(' '); // Everything else is last name
+                } else {
+                    firstName = 'Client'; // Fallback name
+                }
+
+                const newClient = {
+                    id: 'client_' + Date.now() + Math.random().toString(16).slice(2),
+                    firstName: firstName,
+                    lastName: lastName,
+                    phone: phonePart,
+                    url: urlPart,
+                    dripCampaignId: dripCampaignId,
+                    currentMessageIndex: 1,
+                    lastSentDate: null,
+                    nextDueDate: now.toISOString(),
+                    customMessages: {},
+                    notes: [{ 
+                        type: 'System', 
+                        content: `Client added via Bulk Import and enrolled in selected Drip.`, 
+                        timestamp: now.toISOString() 
+                    }],
+                };
+
+                newClients.push(newClient);
+                importCount++;
+            });
+
+            return { newClients, importCount, skippedCount };
+        };
+
+        const renderBulkAddClientForm = () => {
+             const container = document.getElementById('BulkAddClient');
+             if (!container) return;
+
+             container.innerHTML = `
+                <div class="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
+                    <form id="bulk-client-form" class="bg-gray-900 p-8 rounded-xl w-full max-w-4xl border border-purple-600 shadow-3xl max-h-screen overflow-y-auto">
+                        <h2 class="text-2xl font-bold text-white mb-6">Bulk Import Clients (Paste CSV)</h2>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-400 mb-2">1. Paste Your Data Here (Name, Phone, URL)</label>
+                            <textarea id="csv-input" placeholder="Paste your spreadsheet/CSV data here. Example format:
+John Smith, +15551234567, https://linkedin.com/john-smith
+Jane Doe, 555-987-6543, 
+OnlyName, +15551112222
+" required class="${baseClasses.input} h-48"></textarea>
+                            <p class="text-xs ${baseClasses.secondaryText} mt-1">Each line is one client. Phone number is required for each row.</p>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-400 mb-2">2. Select Drip Campaign for Import</label>
+                                <select id="bulk-dripCampaignId" required class="${baseClasses.input}">
+                                    ${data.drips.map(d => `<option value="${d.id}">${d.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div id="import-summary" class="p-2 pt-6 text-sm text-gray-300">
+                                <!-- Summary injected here -->
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end space-x-4 mt-8">
+                            <button type="button" id="cancel-bulk-add" class="py-2 px-4 rounded-lg ${baseClasses.accentOutline} hover:bg-gray-700/50">
+                                Cancel
+                            </button>
+                            <button type="submit" class="py-2 px-4 rounded-lg font-bold ${baseClasses.accent}">
+                                <svg class="w-5 h-5 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                Import and Enroll Clients
+                            </button>
+                        </div>
+                    </form>
+                </div>
+             `;
+
+             const summaryEl = document.getElementById('import-summary');
+             const csvInputEl = document.getElementById('csv-input');
+             
+             const updateSummary = () => {
+                 const rawText = csvInputEl.value;
+                 const lineCount = rawText.trim().split('\n').filter(line => line.trim() !== '').length;
+                 summaryEl.innerHTML = `
+                    <p>Lines detected: <span class="font-bold text-white">${lineCount}</span></p>
+                    <p class="text-xs ${baseClasses.secondaryText} mt-1">
+                        Review your data before importing. Invalid rows (missing phone) will be skipped.
+                    </p>
+                 `;
+             };
+
+             csvInputEl.addEventListener('input', updateSummary);
+             updateSummary(); // Initial summary render
+
+             document.getElementById('cancel-bulk-add').onclick = () => navigateTo('Clients');
+             
+             document.getElementById('bulk-client-form').onsubmit = (e) => {
+                e.preventDefault();
+                
+                const rawText = document.getElementById('csv-input').value;
+                const dripCampaignId = document.getElementById('bulk-dripCampaignId').value;
+
+                if (!rawText || !dripCampaignId) return;
+
+                const { newClients, importCount, skippedCount } = parsePastedData(rawText, dripCampaignId);
+
+                if (importCount === 0) {
+                    alert(`No valid clients to import. Please check that every row has a phone number.`);
+                    return;
+                }
+
+                // Append new clients to the global data store
+                data.clients.push(...newClients);
+                saveData(data.clients, data.drips);
+                
+                // Show final summary and navigate
+                alert(`Import complete! Successfully imported ${importCount} clients. ${skippedCount} rows skipped due to missing/invalid phone number.`);
+                navigateTo('Clients');
+             };
+        };
+
 
         // --- Client Profile Renderer ---
         
@@ -710,7 +913,10 @@
                             <div id="details-section" class="${baseClasses.secondaryBg} p-6 rounded-xl shadow-2xl">
                                 <div class="flex justify-between items-center mb-4">
                                     <h2 class="text-xl font-bold text-white">Client Details</h2>
-                                    <button id="save-details-btn" class="py-1 px-3 rounded-lg text-sm font-bold ${baseClasses.accent}">Save Details</button>
+                                    <div class="flex space-x-3">
+                                        <button id="delete-client-btn" class="py-1 px-3 rounded-lg text-sm font-bold bg-red-700 hover:bg-red-800 text-white transition">Delete Client</button>
+                                        <button id="save-details-btn" class="py-1 px-3 rounded-lg text-sm font-bold ${baseClasses.accent}">Save Details</button>
+                                    </div>
                                 </div>
                                 <div class="grid grid-cols-2 gap-4">
                                     <label class="${baseClasses.secondaryText}">First Name
@@ -772,6 +978,7 @@
             `;
             
             document.getElementById('back-to-clients').onclick = () => navigateTo('Clients');
+            document.getElementById('delete-client-btn').onclick = () => handleDeleteClient(currentClient.id); // New Delete Listener
             
             // --- Message Accordion Rendering & Logic ---
             const messagesContainer = document.getElementById('messages-accordion');
@@ -1198,6 +1405,7 @@
                     <div id="Profile" data-view="Profile" class="router-view p-8 hidden"></div>
                     <div id="AddClient" data-view="AddClient" class="router-view p-8 hidden"></div>
                     <div id="AddDrip" data-view="AddDrip" class="router-view p-8 hidden"></div> <!-- New Drip View -->
+                    <div id="BulkAddClient" data-view="BulkAddClient" class="router-view p-8 hidden"></div> <!-- Bulk Add View -->
                 </main>
             `;
 
@@ -1219,4 +1427,3 @@
     </script>
 </body>
 </html>
-
