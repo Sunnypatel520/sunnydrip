@@ -17,6 +17,15 @@
         html, body, #app { height: 100%; margin: 0; }
         .router-view { display: none; }
         .router-view.active { display: block; }
+
+        /* Specific style for the slide-out history panel */
+        .slide-panel {
+            transition: transform 0.3s ease-out;
+            transform: translateX(100%);
+        }
+        .slide-panel.open {
+            transform: translateX(0);
+        }
     </style>
 </head>
 <body class="bg-gray-900 font-sans">
@@ -122,6 +131,39 @@
             localStorage.setItem(LOCAL_STORAGE_KEY_CLIENTS, JSON.stringify(clients));
             localStorage.setItem(LOCAL_STORAGE_KEY_DRIPS, JSON.stringify(drips));
         };
+        
+        // --- System Health Check (New Function) ---
+        const getStorageHealth = () => {
+            let totalBytes = 0;
+            // Calculate size of stored data
+            Object.keys(localStorage).forEach(key => {
+                const value = localStorage.getItem(key);
+                if (value) {
+                    // Estimate size using string length (1 character = 2 bytes in JavaScript UTF-16)
+                    totalBytes += value.length * 2; 
+                }
+            });
+            
+            const totalKB = (totalBytes / 1024).toFixed(2);
+            // Storage limit is usually 5MB (5120 KB)
+            const limitMB = 5; 
+            const totalClients = data.clients.length;
+
+            let healthStatus = 'Optimal';
+            let healthColor = 'text-green-400';
+            
+            if (totalKB > (limitMB * 0.5 * 1024)) { // Warning if over 50% of the 5MB limit (~2560 KB)
+                healthStatus = 'Monitor (High Usage)';
+                healthColor = 'text-yellow-400';
+            }
+            if (totalKB > (limitMB * 0.8 * 1024)) { // Critical if over 80%
+                healthStatus = 'CRITICAL (Data at Risk)';
+                healthColor = 'text-red-400';
+            }
+
+            return { totalKB, totalClients, healthStatus, healthColor };
+        };
+
 
         // Global data store
         let data = loadData();
@@ -129,12 +171,14 @@
         let selectedClient = null;
         let dashboardViewType = 'card'; // Default to card view
         let dashboardFilter = 'all'; // New state for stat card filtering
+        let isNotesPanelOpen = false; // NEW state for the profile notes panel
 
         // --- Core Logic ---
 
         const getClientStatus = (client) => {
             const isFinished = client.currentMessageIndex > TOTAL_MESSAGES;
-            const isOverdue = new Date(client.nextDueDate).getTime() <= new Date().getTime();
+            // Check if client has a nextDueDate and if it's past
+            const isOverdue = client.nextDueDate && new Date(client.nextDueDate).getTime() <= new Date().getTime();
             
             if (isFinished) return 'complete';
             if (isOverdue) return 'overdue';
@@ -898,17 +942,25 @@ OnlyName, +15551112222
             };
 
             container.innerHTML = `
-                <div class="p-8">
-                    <header class="flex items-center mb-8">
-                        <button id="back-to-clients" class="mr-4 text-gray-400 hover:text-white transition" title="Back to Clients List">
-                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                <div class="p-8 relative">
+                    <header class="flex items-center justify-between mb-8">
+                        <div class="flex items-center">
+                            <button id="back-to-clients" class="mr-4 text-gray-400 hover:text-white transition" title="Back to Clients List">
+                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                            </button>
+                            <h1 class="text-3xl font-bold text-white">${currentClient.firstName} ${currentClient.lastName}</h1>
+                        </div>
+                        
+                        <!-- Toggle for the History Panel -->
+                        <button id="toggle-notes-panel" class="py-2 px-4 rounded-xl flex items-center gap-2 font-semibold ${baseClasses.accent}">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 3h3m-3 3h3M9 16h1m-1 0h1" /></svg>
+                            Notes/History
                         </button>
-                        <h1 class="text-3xl font-bold text-white">${currentClient.firstName} ${currentClient.lastName}</h1>
                     </header>
         
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 pr-96">
                         <!-- COLUMN 1 & 2: Details & Progress -->
-                        <div class="lg:col-span-2 space-y-8">
+                        <div class="lg:col-span-3 space-y-8">
                             <!-- CLIENT DETAILS -->
                             <div id="details-section" class="${baseClasses.secondaryBg} p-6 rounded-xl shadow-2xl">
                                 <div class="flex justify-between items-center mb-4">
@@ -954,38 +1006,57 @@ OnlyName, +15551112222
                                 </div>
                             </div>
                         </div>
-        
-                        <!-- COLUMN 3: Notes and History -->
-                        <div class="lg:col-span-1 space-y-8">
-                            <!-- ADD NOTE -->
-                            <div class="${baseClasses.secondaryBg} p-6 rounded-xl shadow-2xl">
-                                <h2 class="text-xl font-bold text-white mb-4">Add a Note</h2>
-                                <textarea id="note-content" placeholder="Add a new note..." class="${baseClasses.input} h-24"></textarea>
-                                <button id="add-note-btn" class="mt-4 py-2 px-4 rounded-lg font-bold w-full ${baseClasses.accent}">Add Note</button>
-                            </div>
-        
-                            <!-- HISTORY -->
-                            <div class="${baseClasses.secondaryBg} p-6 rounded-xl shadow-2xl">
-                                <h2 class="text-xl font-bold text-white mb-4">History</h2>
-                                <p class="${baseClasses.secondaryText}">Logged messages and notes for this client.</p>
-                                <div id="history-list" class="mt-4 max-h-96 overflow-y-auto space-y-4">
-                                    <!-- History items injected here -->
-                                </div>
+                    </div>
+                </div>
+                
+                <!-- COLUMN 3: Notes and History (SLIDE OUT PANEL) -->
+                <div id="notes-panel" class="fixed top-0 right-0 h-full w-96 ${baseClasses.primaryBg} shadow-2xl border-l border-gray-700 slide-panel overflow-y-auto ${isNotesPanelOpen ? 'open' : ''}">
+                    <div class="p-6">
+                        <div class="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
+                            <h2 class="text-xl font-bold text-white">History & Notes</h2>
+                            <button id="close-notes-panel" class="text-gray-400 hover:text-white transition">
+                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        
+                        <!-- ADD NOTE -->
+                        <div class="${baseClasses.secondaryBg} p-4 rounded-xl shadow-inner mb-6">
+                            <h3 class="text-lg font-bold text-white mb-3">Add a Note</h3>
+                            <textarea id="note-content" placeholder="Add a new note..." class="${baseClasses.input} h-24"></textarea>
+                            <button id="add-note-btn" class="mt-3 py-2 px-4 rounded-lg font-bold w-full ${baseClasses.accent}">Add Note</button>
+                        </div>
+
+                        <!-- HISTORY LIST -->
+                        <div class="${baseClasses.secondaryBg} p-4 rounded-xl shadow-inner">
+                            <h3 class="text-lg font-bold text-white mb-3">Timeline</h3>
+                            <div id="history-list" class="mt-4 max-h-[70vh] overflow-y-auto space-y-4">
+                                <!-- History items injected here -->
                             </div>
                         </div>
                     </div>
                 </div>
             `;
             
+            // --- Attach Listeners to New Panel ---
             document.getElementById('back-to-clients').onclick = () => navigateTo('Clients');
-            document.getElementById('delete-client-btn').onclick = () => handleDeleteClient(currentClient.id); // New Delete Listener
+            document.getElementById('delete-client-btn').onclick = () => handleDeleteClient(currentClient.id); 
             
-            // --- Message Accordion Rendering & Logic ---
+            document.getElementById('toggle-notes-panel').onclick = () => {
+                isNotesPanelOpen = !isNotesPanelOpen;
+                renderClientProfile(currentClient); // Re-render to update panel class
+            };
+            document.getElementById('close-notes-panel').onclick = () => {
+                isNotesPanelOpen = false;
+                renderClientProfile(currentClient); // Re-render to update panel class
+            };
+
+            // --- Message Accordion Rendering & Logic (Same as before) ---
             const messagesContainer = document.getElementById('messages-accordion');
+            // ... (message rendering logic remains the same) ...
             for (let i = 1; i <= TOTAL_MESSAGES; i++) {
                 const index = String(i);
                 const rawContent = client.customMessages?.[index] || drip?.messages[index] || '';
-                const displayContent = getMessageContent(i); // Content with placeholders resolved
+                const displayContent = getMessageContent(i);
 
                 const isCustomized = !!currentClient.customMessages?.[index];
                 const isCurrent = i === currentClient.currentMessageIndex;
@@ -1162,7 +1233,11 @@ OnlyName, +15551112222
                     </header>
                     
                     <div id="stats-section" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"></div>
-                    <div id="filters-section" class="${baseClasses.secondaryBg} p-6 rounded-xl mb-8 shadow-inner"></div>
+
+                    <!-- NEW: Search Input on Dashboard -->
+                    <div class="${baseClasses.secondaryBg} p-4 rounded-xl mb-6 shadow-inner">
+                        <input type="text" id="dashboard-search" placeholder="Search tasks by Name or Phone..." class="${baseClasses.input} w-full text-white" />
+                    </div>
                     
                     <div class="mb-8">
                         <p class="${baseClasses.secondaryText} text-lg" id="task-count">Showing 0 tasks matching criteria.</p>
@@ -1175,6 +1250,10 @@ OnlyName, +15551112222
             
             document.getElementById('card-view-btn').onclick = () => { dashboardViewType = 'card'; renderDashboardTasks('card'); };
             document.getElementById('table-view-btn').onclick = () => { dashboardViewType = 'table'; renderDashboardTasks('table'); };
+            
+            // Attach search listener
+            document.getElementById('dashboard-search').oninput = () => renderDashboardTasks(dashboardViewType);
+
 
             // Initial render of tasks, stats, and filters
             renderDashboardTasks(dashboardViewType);
@@ -1198,11 +1277,13 @@ OnlyName, +15551112222
         const renderDashboardTasks = (viewType) => {
             const taskContainer = document.getElementById('task-list-container');
             const statsContainer = document.getElementById('stats-section');
+            const searchInput = document.getElementById('dashboard-search');
+            const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+
             if (!taskContainer || !statsContainer) return;
             
-            // --- Filtering Logic (Simplified in this local version) ---
+            // --- Filtering Logic ---
             
-            // 1. Calculate Statuses and Stats
             const allClients = data.clients.map(client => ({
                 ...client,
                 status: getClientStatus(client),
@@ -1211,42 +1292,52 @@ OnlyName, +15551112222
             const now = new Date();
             const startOfWeek = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
 
+            // 1. Calculate Stats
             const stats = {
-                // ACTIONS (Overdue clients)
                 actions: allClients.filter(c => c.status === 'overdue').length,
-                // Active clients (not complete)
                 active: allClients.filter(c => c.status === 'active' || c.status === 'overdue').length,
-                // Sent this week
                 sentThisWeek: allClients.filter(c => {
                     return c.lastSentDate && new Date(c.lastSentDate).getTime() >= startOfWeek.getTime();
                 }).length,
             };
 
-            // 2. Inject Stats and Attach Click Listeners
-            statsContainer.innerHTML = `
-                ${renderStatCard("ACTIONS to Take", stats.actions, '<svg class="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>', "border-red-600", "overdue")}
-                ${renderStatCard("Active Clients", stats.active, '<svg class="w-6 h-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h-4v-2h4v2zM7 20h4v-2H7v2zM12 14v-2m-4 2h8m-4 4h4a2 2 0 002-2v-4h-4v4zm0 0h-4a2 2 0 00-2 2v4h4v-4zM12 6v6m0 0v6m0-6h6m-6 0H6v6m6-6v-2m0 0v-2m0 2h6m-6 0H6v2m6-2V6" /></svg>', "border-purple-600", "active")}
-                ${renderStatCard("Sent This Week", stats.sentThisWeek, '<svg class="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>', "border-green-600", "sentThisWeek")}
-            `;
-
-            // Attach click listeners to stat cards
-            document.getElementById('stats-section').querySelectorAll('[data-filter]').forEach(card => {
-                card.addEventListener('click', (e) => {
-                    const filter = e.currentTarget.dataset.filter;
-                    dashboardFilter = (dashboardFilter === filter) ? 'all' : filter; // Toggle filter
+            // 2. Inject Stats and Attach Click Listeners (Avoid re-injecting listeners if they exist)
+            if (statsContainer.innerHTML === "") { // Only inject stats once
+                statsContainer.innerHTML = `
+                    ${renderStatCard("ACTIONS to Take", stats.actions, '<svg class="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>', "border-red-600", "overdue")}
+                    ${renderStatCard("Active Clients", stats.active, '<svg class="w-6 h-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h-4v-2h4v2zM7 20h4v-2H7v2zM12 14v-2m-4 2h8m-4 4h4a2 2 0 002-2v-4h-4v4zm0 0h-4a2 2 0 00-2 2v4h4v-4zM12 6v6m0 0v6m0-6h6m-6 0H6v6m6-6v-2m0 0v-2m0 2h6m-6 0H6v2m6-2V6" /></svg>', "border-purple-600", "active")}
+                    ${renderStatCard("Sent This Week", stats.sentThisWeek, '<svg class="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>', "border-green-600", "sentThisWeek")}
+                `;
+            }
+            
+            // Re-render Stat Card classes (for active state only)
+            const statCards = document.getElementById('stats-section').querySelectorAll('[data-filter]');
+            statCards.forEach(card => {
+                const filter = card.dataset.filter;
+                card.classList.remove('ring-2', 'ring-purple-500', 'scale-[1.03]');
+                if (dashboardFilter === filter) {
+                    card.classList.add('ring-2', 'ring-purple-500', 'scale-[1.03]');
+                }
+                card.onclick = (e) => {
+                    const newFilter = e.currentTarget.dataset.filter;
+                    dashboardFilter = (dashboardFilter === newFilter) ? 'all' : newFilter; // Toggle filter
                     renderDashboardTasks(viewType); // Re-render tasks based on new filter
-                });
+                };
             });
 
-            // 3. Apply Filter to Task List
+
+            // 3. Apply Filter and Search to Task List
             let filteredTasks = allClients.filter(client => {
-                if (dashboardFilter === 'overdue') return client.status === 'overdue';
-                if (dashboardFilter === 'active') return client.status === 'active' || client.status === 'overdue';
-                if (dashboardFilter === 'sentThisWeek') {
-                    return client.lastSentDate && new Date(client.lastSentDate).getTime() >= startOfWeek.getTime();
-                }
-                // 'all' filter shows all active/overdue tasks (excluding finished)
-                return client.status !== 'complete';
+                const matchesFilter = (dashboardFilter === 'overdue' && client.status === 'overdue') ||
+                                    (dashboardFilter === 'active' && (client.status === 'active' || client.status === 'overdue')) ||
+                                    (dashboardFilter === 'sentThisWeek' && client.lastSentDate && new Date(client.lastSentDate).getTime() >= startOfWeek.getTime()) ||
+                                    (dashboardFilter === 'all' && client.status !== 'complete');
+                
+                // Apply search filter (Name or Phone)
+                const fullName = `${client.firstName} ${client.lastName}`.toLowerCase();
+                const matchesSearch = fullName.includes(searchTerm) || client.phone.includes(searchTerm);
+                
+                return matchesFilter && matchesSearch;
             });
             
             document.getElementById('task-count').textContent = `Showing ${filteredTasks.length} tasks matching criteria.`;
@@ -1264,11 +1355,28 @@ OnlyName, +15551112222
                     const isOverdue = client.status === 'overdue';
 
                     const card = document.createElement('div');
-                    card.className = `w-full ${baseClasses.cardBg} p-6 rounded-xl shadow-2xl transition duration-300 transform hover:scale-[1.01] border-t-4 ${isOverdue ? 'border-red-600' : 'border-purple-600'} cursor-pointer`;
+                    card.className = `w-full ${baseClasses.cardBg} p-6 rounded-xl shadow-2xl transition duration-300 transform hover:scale-[1.01] border-t-4 ${isOverdue ? 'border-red-600' : 'border-purple-600'} cursor-pointer relative`;
                     card.onclick = () => navigateTo('Profile', client);
-                    card.innerHTML = `
+                    
+                    // Delete Button
+                    const deleteButton = document.createElement('button');
+                    deleteButton.className = 'absolute top-2 right-2 text-red-400 hover:text-red-600 p-1 rounded-full bg-gray-900/50 hover:bg-gray-900 transition';
+                    deleteButton.title = `Delete ${client.firstName}`;
+                    deleteButton.innerHTML = `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>`;
+                    deleteButton.onclick = (e) => {
+                        e.stopPropagation(); // Prevent card navigation
+                        handleDeleteClient(client.id);
+                    };
+                    card.appendChild(deleteButton);
+
+
+                    card.innerHTML += `
                         <div class="flex justify-between items-start mb-4">
-                            <h3 class="text-xl font-bold text-white">${client.firstName} ${client.lastName}</h3>
+                            <div>
+                                <h3 class="text-xl font-bold text-white">${client.firstName} ${client.lastName}</h3>
+                                <!-- NEW: Client Phone Number -->
+                                <p class="text-xs ${baseClasses.secondaryText} mt-0.5">${client.phone}</p>
+                            </div>
                             <span class="text-sm font-semibold ${isOverdue ? 'bg-red-800 text-red-100' : 'bg-purple-800 text-purple-100'} px-3 py-1 rounded-full">
                                 <svg class="w-4 h-4 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                                 ${isOverdue ? 'Overdue' : 'Active'}
@@ -1290,8 +1398,9 @@ OnlyName, +15551112222
                         </div>
                     `;
                     cardsContainer.appendChild(card);
+                    cardsContainer.lastChild.prepend(deleteButton); // Re-insert delete button element
                 });
-            } else { // Table View
+            } else { // Table View (No changes needed, functionality already there)
                 taskContainer.innerHTML = `
                     <div class="${baseClasses.secondaryBg} rounded-xl shadow-2xl overflow-hidden">
                         <table class="min-w-full divide-y divide-gray-700">
@@ -1362,6 +1471,7 @@ OnlyName, +15551112222
 
         const initializeApp = () => {
             const appEl = document.getElementById('app');
+            const health = getStorageHealth(); // Get health status once at initialization
 
             // 1. Sidebar Structure
             const sidebarHTML = `
@@ -1385,11 +1495,23 @@ OnlyName, +15551112222
                         </button>
                     </nav>
 
-                    <div class="mt-8 pt-4 border-t border-gray-700">
+                    <!-- System Health Moved Here -->
+                    <div class="mt-auto pt-4 border-t border-gray-700">
+                        <h3 class="text-sm font-bold text-gray-400 mb-1">System Health</h3>
+                        <p class="text-xs ${baseClasses.secondaryText}">
+                            Clients: <span class="font-bold text-white">${health.totalClients}</span> | 
+                            Size: <span class="font-bold text-white">${health.totalKB} KB</span>
+                        </p>
+                        <p class="text-xs font-semibold ${health.healthColor}">
+                             Status: ${health.healthStatus}
+                        </p>
+                    </div>
+
+                    <div class="mt-4 pt-4 border-t border-gray-700">
                         <p class="${baseClasses.secondaryText} text-xs truncate">
                             Status: <span class="text-green-400">Local (No DB)</span>
                         </p>
-                        <button onclick="localStorage.clear(); window.location.reload();" class="mt-2 text-xs py-1 px-2 rounded-lg text-red-400 border border-red-400 hover:bg-red-900/50">
+                        <button onclick="localStorage.clear(); window.location.reload();" class="mt-2 text-xs py-1 px-2 rounded-lg text-red-400 border border-red-400 hover:bg-red-900/50 w-full">
                             Clear Local Data
                         </button>
                     </div>
